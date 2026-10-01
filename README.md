@@ -11,4 +11,4 @@ README covers the design and how to embed it on a site). The source is not
 here. Do not edit these files by hand: rebuild with `web-demo/scripts/build.sh`
 (or take the `blender-web-demo` artifact of a `master` build) and replace them.
 
-The loops are synthesised placeholders until real recordings are in.
+The two loops are a vocal and a synth, 30.72 s each.

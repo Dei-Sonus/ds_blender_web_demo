@@ -1,7 +1,7 @@
 // The browser demo's page side. Loaded by the demo build's index.html before
 // the app: it installs the `window.__JUCE__` backend the plugin's page talks
 // to (normally provided by JUCE's WebBrowserComponent) and routes it to the
-// engine worker, decodes the four loops, and owns play / pause.
+// engine worker, decodes the loops, and owns play / pause.
 //
 // The app waits on `window.__BLENDER_DEMO__.ready` before bootstrapping, so
 // every native function exists by the time a service asks for it.

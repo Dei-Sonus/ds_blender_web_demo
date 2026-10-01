@@ -2,9 +2,7 @@
   "sampleRate": 48000,
   "aheadSeconds": 0.12,
   "inputs": [
-    { "name": "Vocal",  "tag": "vocal",  "colour": "#e8708a", "sample": "samples/vocal.flac" },
-    { "name": "Guitar", "tag": "guitar", "colour": "#6fa8dc", "sample": "samples/guitar.flac" },
-    { "name": "Bass",   "tag": "bass",   "colour": "#8fce76", "sample": "samples/bass.flac" },
-    { "name": "Drums",  "tag": "drums",  "colour": "#f1c35c", "sample": "samples/drums.flac" }
+    { "name": "Vocal", "tag": "vocal", "colour": "#e8708a", "sample": "samples/vocal.flac" },
+    { "name": "Synth", "tag": "synth", "colour": "#8f7cf0", "sample": "samples/synth.flac" }
   ]
 }
