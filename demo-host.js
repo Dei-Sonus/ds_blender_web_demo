@@ -1,7 +1,8 @@
 // The browser demo's page side. Loaded by the demo build's index.html before
 // the app: it installs the `window.__JUCE__` backend the plugin's page talks
 // to (normally provided by JUCE's WebBrowserComponent) and routes it to the
-// engine worker, decodes the loops, and owns play / pause.
+// engine worker, and owns play / pause. The loops are the engine's own
+// (compiled in); the page never handles them.
 //
 // The app waits on `window.__BLENDER_DEMO__.ready` before bootstrapping, so
 // every native function exists by the time a service asks for it.
@@ -127,34 +128,12 @@ function pause()
 
 // ── Start-up ─────────────────────────────────────────────────────────────
 
-function argbFromHex (hex)
-{
-    const value = parseInt (String (hex).replace ('#', ''), 16);
-    return Number.isFinite (value) ? ((0xff000000 | value) >>> 0) : 0xff808080;
-}
-
-async function decodeLoop (url, sampleRate)
-{
-    const response = await fetch (url);
-
-    if (! response.ok)
-        throw new Error (`Could not load ${url} (${response.status})`);
-
-    // Decoded at the engine's rate, so the loops play at the right speed
-    // whatever the device runs at.
-    const decoder = new OfflineAudioContext (2, 1, sampleRate);
-    const audio = await decoder.decodeAudioData (await response.arrayBuffer());
-    const left = audio.getChannelData (0).slice();
-    const right = audio.numberOfChannels > 1 ? audio.getChannelData (1).slice() : left.slice();
-    return [left, right];
-}
-
 function unsupportedReason()
 {
     if (typeof WebAssembly !== 'object')
         return 'This browser cannot run WebAssembly.';
 
-    if (typeof AudioWorkletNode !== 'function' || typeof OfflineAudioContext !== 'function')
+    if (typeof AudioWorkletNode !== 'function')
         return 'This browser does not support the Web Audio features the demo needs.';
 
     return '';
@@ -168,8 +147,7 @@ async function start()
         throw new Error (unsupported);
 
     const config = await (await fetch (asset ('demo-config.json'))).json();
-    const sampleRate = config.sampleRate ?? 48000;
-    const samples = await Promise.all (config.inputs.map ((input) => decodeLoop (asset (input.sample), sampleRate)));
+    let sampleRate = 0;
 
     worker = new Worker (asset ('engine-worker.js'), { type: 'module' });
 
@@ -181,6 +159,7 @@ async function start()
             {
                 case 'ready':
                     window.__JUCE__.initialisationData.__juce__functions = data.functions;
+                    sampleRate = data.sampleRate;
                     resolve();
                     break;
 
@@ -201,14 +180,7 @@ async function start()
         worker.onerror = (event) => reject (new Error (event.message || 'The engine failed to start'));
     });
 
-    const transfer = samples.flatMap (([left, right]) => [left.buffer, right.buffer]);
-    worker.postMessage ({
-        type: 'init',
-        sampleRate,
-        aheadSeconds: config.aheadSeconds ?? 0.12,
-        inputs: config.inputs.map ((input) => ({ name: input.name, tag: input.tag, colour: argbFromHex (input.colour) })),
-        samples,
-    }, transfer);
+    worker.postMessage ({ type: 'init', aheadSeconds: config.aheadSeconds ?? 0.12 });
 
     await ready;
 
