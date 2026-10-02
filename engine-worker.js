@@ -1,8 +1,8 @@
 // The demo's engine thread: a module worker hosting the WebAssembly engine
-// (four Blender instances, see web-demo/engine/DemoSession.h). It loops the
-// four samples through the engine, streams the mix to the player worklet a
-// little ahead of playback, answers the page's native-function calls and
-// serves the visualizer frames the page's render worker pulls.
+// (one Blender instance per loop, see web-demo/engine/DemoSession.h). It
+// renders the engine's compiled-in loops, streams the mix to the player
+// worklet a little ahead of playback, answers the page's native-function calls
+// and serves the visualizer frames the page's render worker pulls.
 //
 // All engine work happens here, off both the page and the audio thread: the
 // worklet only copies finished audio out, so an expensive hop never stalls the
@@ -16,9 +16,6 @@ const MESSAGE_PUMP_MS = 15;   // message-thread turn while nothing is rendering
 
 let engine = null;
 let player = null;            // MessagePort to the player worklet
-let loops = [];               // per input: [Float32Array left, Float32Array right]
-let loopLength = 0;
-let position = 0;
 let playing = false;
 let aheadTarget = 0;          // frames the worklet should hold in its queue
 let inFlight = 0;             // frames sent but not yet played
@@ -35,63 +32,41 @@ function post (message, transfer)
     self.postMessage (message, transfer ?? []);
 }
 
-async function init ({ inputs, sampleRate, samples, aheadSeconds })
+async function init ({ aheadSeconds })
 {
     engine = await createBlenderEngine();
     engine.onEngineEvent = (id, json) => post ({ type: 'event', id, json });
     engine.onEngineResult = (resultId, json) => post ({ type: 'result', resultId, json });
 
-    loops = samples;
-    loopLength = Math.min (...samples.map ((channels) => channels[0].length));
-    aheadTarget = Math.round (aheadSeconds * sampleRate);
-
-    const created = withString (JSON.stringify (inputs), (pointer) => engine._demoCreate (pointer, sampleRate, BLOCK));
-
-    if (created !== inputs.length)
+    // The engine decodes its own loops (compiled in) and reports their rate.
+    if (engine._demoCreate (BLOCK) <= 0)
         throw new Error ('The engine did not start');
+
+    const sampleRate = engine._demoSampleRate();
+    aheadTarget = Math.round (aheadSeconds * sampleRate);
 
     const functions = JSON.parse (engine.UTF8ToString (engine._demoNativeFunctions()));
     schedulePump();
-    post ({ type: 'ready', functions });
+    post ({ type: 'ready', functions, sampleRate });
 }
 
-// Renders one chunk: each input's next CHUNK samples of its loop through the
-// engine, block by block, then one message-thread turn.
+// Renders one chunk: the loops' next CHUNK samples through the engine, block
+// by block, then one message-thread turn.
 function renderChunk()
 {
     const out = new Float32Array (CHUNK * 2);
 
     for (let offset = 0; offset < CHUNK; offset += BLOCK)
     {
-        // Fetched per block, never cached across a render: the module's memory
-        // may grow inside one (a re-prepare sizes storage), which replaces the
-        // heap views and leaves an old one writing into a detached buffer.
-        const heap = engine.HEAPF32;
-
-        for (let input = 0; input < loops.length; ++input)
-        {
-            for (let channel = 0; channel < 2; ++channel)
-            {
-                const source = loops[input][Math.min (channel, loops[input].length - 1)];
-                const target = engine._demoInputChannel (input, channel) >> 2;
-                let read = position;
-
-                for (let n = 0; n < BLOCK; ++n)
-                {
-                    heap[target + n] = source[read];
-                    read = read + 1 === loopLength ? 0 : read + 1;
-                }
-            }
-        }
-
         engine._demoRender (BLOCK);
 
+        // Read after the render, never cached across one: the module's memory
+        // may grow inside it (a re-prepare sizes storage), which replaces the
+        // heap views.
         const left = engine._demoOutputChannel (0) >> 2;
         const right = engine._demoOutputChannel (1) >> 2;
         out.set (engine.HEAPF32.subarray (left, left + BLOCK), offset);
         out.set (engine.HEAPF32.subarray (right, right + BLOCK), CHUNK + offset);
-
-        position = (position + BLOCK) % loopLength;
     }
 
     engine._demoPump();
@@ -205,7 +180,7 @@ self.onmessage = async ({ data, ports }) =>
             break;
 
         case 'restart':
-            position = 0;
+            engine?._demoRestart();
             break;
 
         case 'visible':

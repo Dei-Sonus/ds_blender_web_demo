@@ -1,8 +1,3 @@
 {
-  "sampleRate": 48000,
-  "aheadSeconds": 0.12,
-  "inputs": [
-    { "name": "Vocal", "tag": "vocal", "colour": "#e8708a", "sample": "samples/vocal.flac" },
-    { "name": "Synth", "tag": "synth", "colour": "#8f7cf0", "sample": "samples/synth.flac" }
-  ]
+  "aheadSeconds": 0.12
 }
