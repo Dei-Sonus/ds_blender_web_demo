@@ -1,5 +1,5 @@
 // The demo's engine thread: a module worker hosting the WebAssembly engine
-// (one Blender instance per loop, see web-demo/engine/DemoSession.h). It
+// (the plugin's EngineSession, include/ds_host_wasm/EngineSession.h). It
 // renders the engine's compiled-in loops, streams the mix to the player
 // worklet a little ahead of playback, answers the page's native-function calls
 // and serves the visualizer frames the page's render worker pulls.
@@ -8,7 +8,7 @@
 // worklet only copies finished audio out, so an expensive hop never stalls the
 // audio callback, and the page's UI work never stalls the engine.
 
-import createBlenderEngine from './blender-engine.mjs';
+import createEngine from './engine.mjs';
 
 const BLOCK = 128;            // engine block (one AudioWorklet render quantum)
 const CHUNK = 1024;           // samples rendered per message to the worklet
@@ -34,7 +34,7 @@ function post (message, transfer)
 
 async function init ({ aheadSeconds })
 {
-    engine = await createBlenderEngine();
+    engine = await createEngine();
     engine.onEngineEvent = (id, json) => post ({ type: 'event', id, json });
     engine.onEngineResult = (resultId, json) => post ({ type: 'result', resultId, json });
 

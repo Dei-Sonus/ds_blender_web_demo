@@ -4,7 +4,7 @@
 // engine worker, and owns play / pause. The loops are the engine's own
 // (compiled in); the page never handles them.
 //
-// The app waits on `window.__BLENDER_DEMO__.ready` before bootstrapping, so
+// The app waits on `window.__DS_HOST__.ready` before bootstrapping, so
 // every native function exists by the time a service asks for it.
 //
 // Everything is resolved relative to this file, so the bundle can be served
@@ -89,7 +89,7 @@ async function startAudio (sampleRate)
     context = new AudioContext ({ sampleRate, latencyHint: 'playback' });
     await context.audioWorklet.addModule (asset ('player-worklet.js'));
 
-    player = new AudioWorkletNode (context, 'blender-demo-player', { numberOfInputs: 0, outputChannelCount: [2] });
+    player = new AudioWorkletNode (context, 'ds-host-player', { numberOfInputs: 0, outputChannelCount: [2] });
     player.connect (context.destination);
 
     // The worklet and the engine worker talk directly, not through this page.
@@ -205,7 +205,7 @@ const ready = start().catch ((error) =>
     throw error;
 });
 
-// ── window.__BLENDER_DEMO__ ──────────────────────────────────────────────
+// ── window.__DS_HOST__ ──────────────────────────────────────────────
 // What the app's demo mode uses: transport, state, and the visualizer pulls
 // that the plugin serves over its resource provider.
 
@@ -231,7 +231,7 @@ function transportChannel()
     return transportPort;
 }
 
-window.__BLENDER_DEMO__ = {
+window.__DS_HOST__ = {
     ready,
     state: () => ({ ...demo }),
     onStateChange (listener)

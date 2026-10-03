@@ -11,7 +11,7 @@ const FADE_SECONDS = 0.02;
 // quanta never outrun the engine's first chunks.
 const PREROLL_SECONDS = 0.04;
 
-class BlenderDemoPlayer extends AudioWorkletProcessor
+class DsHostPlayer extends AudioWorkletProcessor
 {
     constructor()
     {
@@ -148,4 +148,4 @@ class BlenderDemoPlayer extends AudioWorkletProcessor
     }
 }
 
-registerProcessor ('blender-demo-player', BlenderDemoPlayer);
+registerProcessor ('ds-host-player', DsHostPlayer);
