@@ -30,7 +30,8 @@ JUCE Framework modules are dual-licensed under
 
 The browser demo (`web-demo/`, built into `BlenderWebDemo.zip`) additionally
 bundles [PFFFT](https://bitbucket.org/jpommier/pffft) as its FFT
-(`web-demo/engine/third_party/pffft`), under the FFTPACK licence below, and
+(through the browser host `ds_host_wasm`, its `third_party/pffft`), under the
+FFTPACK licence below, and
 [libFLAC](https://xiph.org/flac/) (the copy JUCE carries in
 `juce_audio_formats/codecs/flac`) to decode the loops compiled into its
 engine, under the BSD licence after it. The demo's Licenses sheet lists both.
