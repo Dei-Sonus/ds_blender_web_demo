@@ -29,7 +29,10 @@
         frame.dataset.blenderDemoFrame = '';
         frame.src = options.src ?? element.dataset.src ?? defaultSrc;
         frame.title = options.title ?? element.dataset.title ?? 'Blender plugin demo';
-        frame.allow = 'autoplay';
+        // cross-origin-isolated: a threaded engine needs the page isolated, and
+        // inside an iframe that also takes the embedding page sending COOP /
+        // COEP and granting it here (the demo is cross-origin to that page).
+        frame.allow = 'autoplay; cross-origin-isolated';
         frame.loading = 'lazy';
         frame.style.cssText = 'display:block;width:100%;border:0;border-radius:12px;background:#000;'
                             + `aspect-ratio:${ASPECT};`;

@@ -8,7 +8,6 @@
 // worklet only copies finished audio out, so an expensive hop never stalls the
 // audio callback, and the page's UI work never stalls the engine.
 
-import createEngine from './engine.mjs';
 
 const BLOCK = 128;            // engine block (one AudioWorklet render quantum)
 const CHUNK = 1024;           // samples rendered per message to the worklet
@@ -32,22 +31,87 @@ function post (message, transfer)
     self.postMessage (message, transfer ?? []);
 }
 
-async function init ({ aheadSeconds })
+const THREADED_START_TIMEOUT_MS = 20000;
+
+// Creates an engine and starts its session (_demoCreate); rejects if either
+// fails. Returns the engine, its session running.
+async function startEngine (url, threaded)
 {
-    engine = await createEngine();
-    engine.onEngineEvent = (id, json) => post ({ type: 'event', id, json });
-    engine.onEngineResult = (resultId, json) => post ({ type: 'result', resultId, json });
+    const { default: create } = await import (url);
+    const started = await create();
+    started.onEngineEvent = (id, json) => post ({ type: 'event', id, json });
+    started.onEngineResult = (resultId, json) => post ({ type: 'result', resultId, json });
+    started.threaded = threaded;
 
     // The engine decodes its own loops (compiled in) and reports their rate.
-    if (engine._demoCreate (BLOCK) <= 0)
+    if (started._demoCreate (BLOCK) <= 0)
         throw new Error ('The engine did not start');
+
+    return started;
+}
+
+// The threaded engine (engine-mt) only where the bundle ships one AND the page
+// is cross-origin isolated (COOP + COEP), which threads need. ANY failure
+// before it is running falls back to the single-threaded engine, which always
+// works: a rejected create, a session that does not start, a pool worker that
+// fails to load (Emscripten reports that as an uncaught error in this worker,
+// caught here while the threaded engine starts), or no answer in time. A
+// threaded engine abandoned that way may leave its idle pool workers behind
+// until the page goes; they hold memory, not the audio.
+async function loadEngine (threadedEngine)
+{
+    const isolated = self.crossOriginIsolated === true && typeof SharedArrayBuffer === 'function';
+
+    if (threadedEngine && isolated)
+    {
+        let onError = null;
+        let timer = 0;
+
+        try
+        {
+            const failed = new Promise ((_, reject) =>
+            {
+                onError = (event) =>
+                {
+                    event.preventDefault();
+                    reject (event.error ?? new Error (event.message));
+                };
+
+                self.addEventListener ('error', onError);
+                timer = setTimeout (() => reject (new Error ('timed out')), THREADED_START_TIMEOUT_MS);
+            });
+
+            return await Promise.race ([startEngine ('./engine-mt.mjs', true), failed]);
+        }
+        catch (error)
+        {
+            console.warn ('The threaded engine did not start; using the single-threaded one.', error);
+        }
+        finally
+        {
+            self.removeEventListener ('error', onError);
+            clearTimeout (timer);
+        }
+    }
+
+    return startEngine ('./engine.mjs', false);
+}
+
+// The engine's memory as it is NOW: read after every render, never cached
+// across one. Growth replaces the buffer (single-threaded) or extends a shared
+// one that older views do not cover (threaded).
+const heapF32 = () => new Float32Array (engine.wasmMemory.buffer);
+
+async function init ({ aheadSeconds, threadedEngine })
+{
+    engine = await loadEngine (threadedEngine === true);
 
     const sampleRate = engine._demoSampleRate();
     aheadTarget = Math.round (aheadSeconds * sampleRate);
 
     const functions = JSON.parse (engine.UTF8ToString (engine._demoNativeFunctions()));
     schedulePump();
-    post ({ type: 'ready', functions, sampleRate });
+    post ({ type: 'ready', functions, sampleRate, threaded: engine.threaded === true });
 }
 
 // Renders one chunk: the loops' next CHUNK samples through the engine, block
@@ -61,12 +125,12 @@ function renderChunk()
         engine._demoRender (BLOCK);
 
         // Read after the render, never cached across one: the module's memory
-        // may grow inside it (a re-prepare sizes storage), which replaces the
-        // heap views.
+        // may grow inside it (a re-prepare sizes storage).
+        const heap = heapF32();
         const left = engine._demoOutputChannel (0) >> 2;
         const right = engine._demoOutputChannel (1) >> 2;
-        out.set (engine.HEAPF32.subarray (left, left + BLOCK), offset);
-        out.set (engine.HEAPF32.subarray (right, right + BLOCK), CHUNK + offset);
+        out.set (heap.subarray (left, left + BLOCK), offset);
+        out.set (heap.subarray (right, right + BLOCK), CHUNK + offset);
     }
 
     engine._demoPump();
@@ -119,8 +183,11 @@ function onTransportMessage (port, { data })
 
         if (size >= 0)
         {
-            const start = engine.HEAPU32[result >> 2];
-            buffer = engine.HEAPU8.slice (start, start + size).buffer;
+            // Fresh views (the render may have grown memory); slice copies
+            // into a plain, transferable buffer even when memory is shared.
+            const memory = engine.wasmMemory.buffer;
+            const start = new Uint32Array (memory)[result >> 2];
+            buffer = new Uint8Array (memory).slice (start, start + size).buffer;
         }
 
         port.postMessage ({ id: data.id, buffer }, buffer !== null ? [buffer] : []);

@@ -19,6 +19,7 @@ const asset = (path) => new URL (path, base).href;
 const listeners = new Map();   // eventId -> Map<id, callback>
 let nextListenerId = 0;
 let worker = null;
+let engineKind = null;     // 'threaded' | 'single-threaded', once ready
 
 function dispatch (eventId, payload)
 {
@@ -160,6 +161,7 @@ async function start()
                 case 'ready':
                     window.__JUCE__.initialisationData.__juce__functions = data.functions;
                     sampleRate = data.sampleRate;
+                    engineKind = data.threaded ? 'threaded' : 'single-threaded';
                     resolve();
                     break;
 
@@ -180,7 +182,7 @@ async function start()
         worker.onerror = (event) => reject (new Error (event.message || 'The engine failed to start'));
     });
 
-    worker.postMessage ({ type: 'init', aheadSeconds: config.aheadSeconds ?? 0.12 });
+    worker.postMessage ({ type: 'init', aheadSeconds: config.aheadSeconds ?? 0.12, threadedEngine: config.threadedEngine === true });
 
     await ready;
 
@@ -243,6 +245,11 @@ window.__DS_HOST__ = {
     play,
     pause,
     toggle: () => (demo.playing ? pause() : play()),
+
+    // Which engine is running: 'threaded' (engine-mt, on a cross-origin
+    // isolated page whose bundle ships one), 'single-threaded', or null before
+    // the engine is ready.
+    engine: () => engineKind,
 
     // Playback health, for a page that wants to tell a struggling device:
     // { underruns, queuedFrames } (null before the first Play).
